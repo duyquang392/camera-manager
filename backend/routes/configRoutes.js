@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { getStorageAdapter } = require('../storage/memoryAdapter');
 
+// Import models for MongoDB case
+const Camera = require('../models/Camera');
+const Zone = require('../models/Zone');
+
 // Export full configuration as JSON
 router.get('/export', async (req, res) => {
   try {

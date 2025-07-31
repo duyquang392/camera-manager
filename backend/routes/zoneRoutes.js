@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getStorageAdapter } = require('../storage/memoryAdapter');
+const Zone = require('../models/Zone');
 
 // Lấy tất cả zone của 1 camera
 router.get('/camera/:cameraId', async (req, res) => {
@@ -11,7 +12,7 @@ router.get('/camera/:cameraId', async (req, res) => {
     if (adapter.isInMemory) {
       zones = await adapter.storage.findZonesByCameraId(req.params.cameraId);
     } else {
-      const Zone = require('../models/Zone');
+      // const Zone = require('../models/Zone');
       zones = await Zone.find({ cameraId: req.params.cameraId });
     }
     
@@ -51,7 +52,7 @@ router.post('/', async (req, res) => {
     if (adapter.isInMemory) {
       newZone = await adapter.storage.createZone(zoneData);
     } else {
-      const Zone = require('../models/Zone');
+      // const Zone = require('../models/Zone');
       const zone = new Zone(zoneData);
       newZone = await zone.save();
     }
@@ -102,6 +103,7 @@ router.delete('/:id', getZone, async (_, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 // Middleware để lấy zone theo ID
 async function getZone(req, res, next) {
   let zone;
