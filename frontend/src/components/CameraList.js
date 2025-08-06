@@ -246,38 +246,49 @@ const CameraList = () => {
         return;
       }
 
-      // Format for AI processing server
-      const exportData = {
-        timestamp: new Date().toISOString(),
-        version: "1.0",
-        configurations: dataToExport.map(camera => ({
-          camera_id: camera._id,
-          camera_name: camera.name,
-          stream_url: camera.streamUrl,
-          description: camera.description,
-          zones: camera.zones.map(zone => ({
-            zone_id: zone._id,
-            zone_name: zone.name,
-            counting_direction: zone.countingDirection,
-            polygon_points: zone.points,
-            // Add any additional zone parameters needed by AI server
-            sensitivity: 0.5, // Example parameter
-            object_classes: ["person", "vehicle"] // Example parameter
-          }))
-        }))
-      };
+      // Export each camera as separate config.json format
+      for (const camera of dataToExport) {
+        // Format theo cấu trúc config.json yêu cầu
+        const configData = {
+          source_id : camera.name || "",
+          stream_url: camera.streamUrl || "",
+          hls_url: camera.hlsUrl || "http://",
+          frame_width: camera.frameWidth || 1920,
+          frame_height: camera.frameHeight || 1080,
+          show_roi: camera.showRoi !== undefined ? camera.showRoi : true,
+          show_line: camera.showLine !== undefined ? camera.showLine : true,
+          show_stats: camera.showStats !== undefined ? camera.showStats : true,
+          reset_interval: camera.resetInterval || 3600,
+          reset_time: camera.resetTime || "00:00",
+          enable_auto_reset: camera.enableAutoReset !== undefined ? camera.enableAutoReset : true,
+          rois: camera.zones ? camera.zones.map(zone => ({
+            name: zone.name || "",
+            points: zone.points ? zone.points.map(point => {
+              // Convert from {x, y} format to [x, y] array format
+              if (typeof point === 'object' && point.x !== undefined && point.y !== undefined) {
+                return [Math.round(point.x), Math.round(point.y)];
+              }
+              // If already in array format, return as is
+              return point;
+            }) : []
+          })) : []
+        };
 
-      const dataStr = JSON.stringify(exportData, null, 2);
-      const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
-      
-      const exportFileName = exportOption === 'all' ? 'all_cameras_full_config.json' : 
-                          exportOption === 'selected' ? `selected_${selected.length}_cameras_config.json` : 
-                          `camera_${dataToExport[0].name}_config.json`;
-      
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileName);
-      linkElement.click();
+        const dataStr = JSON.stringify(configData, null, 4);
+        const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
+        
+        const exportFileName = `${camera.name}_config.json`;
+        
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileName);
+        linkElement.click();
+        
+        // Add delay between downloads if multiple cameras
+        if (dataToExport.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       
     } catch (error) {
       console.error('Error during export:', error);
@@ -434,6 +445,15 @@ const CameraList = () => {
                           {streamStatus?.isActive ? <Stop /> : <PlayArrow />}
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="Export Config.json">
+                        <IconButton 
+                          onClick={() => exportJSON(camera._id)} 
+                          size="small"
+                          color="primary"
+                        >
+                          <Download />
+                        </IconButton>
+                      </Tooltip>
                       <IconButton component={Link} to={`/cameras/${camera._id}`} title="View" disabled={loading} size="small">
                         <Visibility />
                       </IconButton>
@@ -458,13 +478,13 @@ const CameraList = () => {
         onClose={handleMenuClose}
       >
         <MenuItem onClick={() => exportJSON('all')} disabled={loading}>
-          Export All Cameras (with zones)
+          Export All Cameras (config.json format)
         </MenuItem>
         <MenuItem 
           onClick={() => exportJSON('selected')} 
           disabled={selected.length === 0 || loading}
         >
-          Export Selected Cameras ({selected.length})
+          Export Selected Cameras ({selected.length}) (config.json format)
         </MenuItem>
       </Menu>
 

@@ -360,6 +360,7 @@ router.get('/ping', (req, res) => {
 });
 router.get('/stats', async (req, res) => {
   try {
+    const adapter = getStorageAdapter();
     const cameraCount = await Camera.countDocuments();
     const zoneCount = await Zone.countDocuments();
     

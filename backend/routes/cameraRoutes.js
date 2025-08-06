@@ -68,7 +68,17 @@ router.post('/', async (req, res) => {
       name: req.body.name,
       streamUrl: req.body.streamUrl,
       streamType: req.body.streamType || 'rtsp',
-      description: req.body.description
+      description: req.body.description,
+      // Config fields
+      hlsUrl: req.body.hlsUrl || 'http://',
+      frameWidth: req.body.frameWidth || 1920,
+      frameHeight: req.body.frameHeight || 1080,
+      showRoi: req.body.showRoi !== undefined ? req.body.showRoi : true,
+      showLine: req.body.showLine !== undefined ? req.body.showLine : true,
+      showStats: req.body.showStats !== undefined ? req.body.showStats : true,
+      resetInterval: req.body.resetInterval || 3600,
+      resetTime: req.body.resetTime || '00:00',
+      enableAutoReset: req.body.enableAutoReset !== undefined ? req.body.enableAutoReset : true
     };
 
     let newCamera;
@@ -106,6 +116,17 @@ router.patch('/:id', getCamera, async (req, res) => {
     if (req.body.streamType != null) updateData.streamType = req.body.streamType;
     if (req.body.description != null) updateData.description = req.body.description;
     if (req.body.isActive != null) updateData.isActive = req.body.isActive;
+    
+    // Config fields
+    if (req.body.hlsUrl != null) updateData.hlsUrl = req.body.hlsUrl;
+    if (req.body.frameWidth != null) updateData.frameWidth = req.body.frameWidth;
+    if (req.body.frameHeight != null) updateData.frameHeight = req.body.frameHeight;
+    if (req.body.showRoi != null) updateData.showRoi = req.body.showRoi;
+    if (req.body.showLine != null) updateData.showLine = req.body.showLine;
+    if (req.body.showStats != null) updateData.showStats = req.body.showStats;
+    if (req.body.resetInterval != null) updateData.resetInterval = req.body.resetInterval;
+    if (req.body.resetTime != null) updateData.resetTime = req.body.resetTime;
+    if (req.body.enableAutoReset != null) updateData.enableAutoReset = req.body.enableAutoReset;
 
     let updatedCamera;
     if (adapter.isInMemory) {

@@ -129,7 +129,7 @@ const CameraDetail = () => {
       )}
       
       <Typography variant="body2" color="text.secondary" gutterBottom>
-        Stream URL: {camera.streamUrl}
+        Stream URL: {camera.hlsUrl}
       </Typography>
 
       <Box display="flex" justifyContent="space-between" mb={3}>

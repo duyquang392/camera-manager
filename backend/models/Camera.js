@@ -22,6 +22,43 @@ const CameraSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Config fields
+  hlsUrl: {
+    type: String,
+    default: 'http://'
+  },
+  frameWidth: {
+    type: Number,
+    default: 1920
+  },
+  frameHeight: {
+    type: Number,
+    default: 1080
+  },
+  showRoi: {
+    type: Boolean,
+    default: true
+  },
+  showLine: {
+    type: Boolean,
+    default: true
+  },
+  showStats: {
+    type: Boolean,
+    default: true
+  },
+  resetInterval: {
+    type: Number,
+    default: 3600
+  },
+  resetTime: {
+    type: String,
+    default: '00:00'
+  },
+  enableAutoReset: {
+    type: Boolean,
+    default: true
+  },
   hlsStreamUrl: {
     type: String // Generated HLS URL when streaming is active
   },

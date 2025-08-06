@@ -18,7 +18,7 @@ const VideoPlayer = ({
   const [streamReady, setStreamReady] = useState(false);
 
   useEffect(() => {
-    if (!camera?.streamUrl) return;
+    if (!camera?.hlsUrl) return;
 
     const video = videoRef.current;
     if (!video) return;
@@ -39,7 +39,7 @@ const VideoPlayer = ({
         
         switch (streamType.toLowerCase()) {
           case 'hls':
-            await initializeHLS(video, camera.streamUrl);
+            await initializeHLS(video, camera.hlsUrl);
             break;
           case 'rtsp':
             // For RTSP, we might need to convert to HLS via backend
@@ -47,7 +47,7 @@ const VideoPlayer = ({
             break;
           case 'http':
           case 'mjpeg':
-            await initializeDirectStream(video, camera.streamUrl);
+            await initializeDirectStream(video, camera.hlsUrl);
             break;
           default:
             throw new Error(`Unsupported stream type: ${streamType}`);
@@ -70,7 +70,7 @@ const VideoPlayer = ({
     };
   }, [camera]);
 
-  const initializeHLS = async (video, streamUrl) => {
+  const initializeHLS = async (video, hlsUrl) => {
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: false,
@@ -106,12 +106,12 @@ const VideoPlayer = ({
           }
         }
       });
-      console.log('Initializing HLS for stream:', streamUrl);
-      hls.loadSource(streamUrl);
+      console.log('Initializing HLS for stream:', hlsUrl);
+      hls.loadSource(hlsUrl);
       hls.attachMedia(video);
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
-      video.src = streamUrl;
+      video.src = hlsUrl;
       video.addEventListener('loadedmetadata', () => {
         setStreamReady(true);
         video.play().catch(e => console.warn('Autoplay prevented:', e));
@@ -134,8 +134,8 @@ const VideoPlayer = ({
     }
   };
 
-  const initializeDirectStream = async (video, streamUrl) => {
-    video.src = streamUrl;
+  const initializeDirectStream = async (video, hlsUrl) => {
+    video.src = hlsUrl;
     
     video.addEventListener('loadedmetadata', () => {
       setStreamReady(true);
