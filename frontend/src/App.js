@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Container } from '@mui/material';
 import CameraList from './components/CameraList';
 import CameraDetail from './components/CameraDetail';
-import AddCamera from './components/AddCamera';
+// import AddCamera from './components/AddCamera';
 import AddCameraPage from './components/AddCameraPage';
 import EditCamera from './components/EditCamera';
 import Navigation from './components/Navigation';

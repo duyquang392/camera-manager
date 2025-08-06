@@ -22,6 +22,8 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
   const [drawingMode, setDrawingMode] = useState(false);
   const [selectedPointIndex, setSelectedPointIndex] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [mouseDownTime, setMouseDownTime] = useState(null);
+  const [justFinishedDragging, setJustFinishedDragging] = useState(false);
   const wrapperRef = useRef(null);
 
   // Calculate convex hull using Graham Scan algorithm
@@ -77,16 +79,18 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
       return;
     }
 
-    if (isDragging) {
-      setInstructions('Kéo để di chuyển điểm. Nhấn chuột để xác nhận.');
+    if (isDragging && selectedPointIndex !== null) {
+      setInstructions(`Đang kéo điểm ${selectedPointIndex + 1}. Nhấn chuột để xác nhận.`);
+    } else if (selectedPointIndex !== null) {
+      setInstructions(`Điểm ${selectedPointIndex + 1} được chọn. Kéo để di chuyển hoặc nhấn Del để xóa.`);
     } else if (points.length > 2) {
-      setInstructions('Nhấn "d" để hoàn thành vùng hoặc tiếp tục thêm điểm');
+      setInstructions('Nhấn "d" để hoàn thành vùng, chuột phải để xóa điểm, hoặc tiếp tục thêm điểm');
     } else {
-      setInstructions('Nhấn chuột trái để thêm điểm');
+      setInstructions('Nhấn chuột trái để thêm điểm, chuột phải để xóa điểm');
     }
-  }, [drawingMode, isDragging, points.length]);
+  }, [drawingMode, isDragging, points.length, selectedPointIndex]);
 
-  // Fetch existing zones and initialize state
+  // Fetch existing zones - separate effect to avoid resetting state
   useEffect(() => {
     const fetchZones = async () => {
       try {
@@ -98,7 +102,10 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
     };
 
     if (cameraId) fetchZones();
+  }, [cameraId]);
 
+  // Initialize state only once when component mounts or zone prop changes
+  useEffect(() => {
     if (zone) {
       setName(zone.name);
       setCountingDirection(zone.countingDirection);
@@ -108,32 +115,96 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
       setCountingDirection('both');
       setPoints([]);
     }
+    // Không gọi updateInstructions ở đây!
+  }, [zone]);
 
-    updateInstructions();
+  // Point management functions
+  const handleRemoveLastPoint = useCallback(() => {
+    if (points.length > 0) {
+      console.log('Removing last point, current points:', points.length);
+      console.log('Current points array:', points);
+      setPoints(prevPoints => {
+        const newPoints = prevPoints.slice(0, -1);
+        console.log('New points after removing last:', newPoints.length);
+        console.log('New points array:', newPoints);
+        return newPoints;
+      });
+    }
+  }, [points]);
 
+  const handleClearPoints = useCallback(() => {
+    console.log('Clearing all points');
+    setPoints([]);
+    setSelectedPointIndex(null);
+    setIsDragging(false);
+    setJustFinishedDragging(false);
+  }, []);
+
+  const handleClosePolygon = useCallback(() => {
+    if (points.length > 2) {
+      console.log('Closing polygon with', points.length, 'points');
+      console.log('Points before convex hull:', points);
+      // Calculate convex hull and close the polygon
+      const convexHull = calculateConvexHull(points);
+      console.log('Points after convex hull:', convexHull);
+      setPoints(convexHull);
+      setDrawingMode(false);
+      setSelectedPointIndex(null);
+      setIsDragging(false);
+      setJustFinishedDragging(false);
+    }
+  }, [points, calculateConvexHull]);
+
+  // Keyboard event handler - separate effect
+  useEffect(() => {
     const handleKeyDown = (e) => {
+      console.log('Key pressed:', e.key);
       switch (e.key.toLowerCase()) {
         case 'd':
+          e.preventDefault();
           if (!isDragging) {
             if (drawingMode && points.length > 2) {
+              console.log('Closing polygon');
               handleClosePolygon();
             } else {
+              console.log('Toggling drawing mode from', drawingMode, 'to', !drawingMode);
               setDrawingMode(!drawingMode);
             }
-            updateInstructions();
           }
           break;
         case 'r':
+          e.preventDefault();
           if (drawingMode && !isDragging) {
+            console.log('Removing last point');
             handleRemoveLastPoint();
           }
           break;
         case 'escape':
+          e.preventDefault();
           if (drawingMode) {
+            console.log('Exiting drawing mode');
             setDrawingMode(false);
             setSelectedPointIndex(null);
             setIsDragging(false);
-            updateInstructions();
+            setJustFinishedDragging(false);
+          }
+          break;
+        case 'delete':
+        case 'backspace':
+          e.preventDefault();
+          if (drawingMode && selectedPointIndex !== null && points.length > 1) {
+            console.log('Deleting selected point via keyboard:', selectedPointIndex);
+            console.log('Points before deletion:', points);
+            setPoints(prevPoints => {
+              const newPoints = prevPoints.filter((_, index) => index !== selectedPointIndex);
+              console.log('Points after keyboard deletion:', newPoints);
+              return newPoints;
+            });
+            setSelectedPointIndex(null);
+            setIsDragging(false);
+            setJustFinishedDragging(false);
+          } else {
+            console.log('Cannot delete point - drawingMode:', drawingMode, 'selectedPointIndex:', selectedPointIndex, 'points.length:', points.length);
           }
           break;
         default:
@@ -143,72 +214,164 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cameraId, zone, drawingMode, isDragging, points.length, updateInstructions]);
+  }, [drawingMode, isDragging, points.length, selectedPointIndex, handleRemoveLastPoint, handleClosePolygon]);
 
-  // Handle video click for adding/dragging points
-  const handleVideoClick = useCallback((clickPoint) => {
-    if (!drawingMode) return;
-
-    const { x, y } = clickPoint;
-
-    // Check if click is near an existing point for dragging
-    const clickedPointIndex = points.findIndex(
-      p => Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2)) < 2
-    );
-
-    if (clickedPointIndex !== -1) {
-      setSelectedPointIndex(clickedPointIndex);
-      setIsDragging(true);
-      return;
-    }
-
-    // Add new point
-    setPoints([...points, { x, y }]);
+  // Update instructions when relevant state changes
+  useEffect(() => {
     updateInstructions();
-  }, [drawingMode, points, updateInstructions]);
+  }, [updateInstructions]);
 
-  // Handle mouse move for dragging points
   const handleMouseMove = useCallback((event) => {
-    if (!drawingMode || !isDragging || selectedPointIndex === null || !wrapperRef.current) return;
+    if (!drawingMode || !wrapperRef.current) return;
+    
+    // If we have a selected point and mouse is down for more than 100ms, start dragging
+    if (selectedPointIndex !== null && mouseDownTime && !isDragging) {
+      if (Date.now() - mouseDownTime > 100) {
+        console.log('Starting drag for point:', selectedPointIndex);
+        setIsDragging(true);
+      }
+    }
+    
+    // Only move point if we're actually dragging
+    if (!isDragging || selectedPointIndex === null) return;
 
+    console.log('Moving point:', selectedPointIndex);
     const rect = wrapperRef.current.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
 
-    const updatedPoints = [...points];
-    updatedPoints[selectedPointIndex] = { x, y };
-    setPoints(updatedPoints);
-  }, [drawingMode, isDragging, selectedPointIndex, points]);
+    // Clamp coordinates to stay within bounds
+    const clampedX = Math.max(0, Math.min(100, x));
+    const clampedY = Math.max(0, Math.min(100, y));
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    setSelectedPointIndex(null);
-    updateInstructions();
-  }, [updateInstructions]);
+    console.log('New position:', { x: clampedX, y: clampedY });
 
-  // Point management functions
-  const handleRemoveLastPoint = () => {
-    if (points.length > 0) {
-      setPoints(points.slice(0, -1));
-      updateInstructions();
+    setPoints(prevPoints => {
+      const updatedPoints = [...prevPoints];
+      // Preserve all existing properties of the point (like _id) and only update x, y
+      updatedPoints[selectedPointIndex] = { 
+        ...updatedPoints[selectedPointIndex], 
+        x: clampedX, 
+        y: clampedY 
+      };
+      console.log('Updated points array:', updatedPoints);
+      return updatedPoints;
+    });
+  }, [drawingMode, isDragging, selectedPointIndex, mouseDownTime]);
+
+  const handleMouseDown = useCallback((event) => {
+    if (!drawingMode || !wrapperRef.current) return;
+    
+    console.log('Mouse down event');
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+
+    console.log('Mouse down at:', { x, y });
+
+    // Check if mouse down is on an existing point
+    const clickedPointIndex = points.findIndex(
+      p => {
+        const distance = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
+        console.log(`Distance to point ${points.indexOf(p)}:`, distance);
+        return distance < 8;
+      }
+    );
+
+    console.log('Clicked point index:', clickedPointIndex);
+    setMouseDownTime(Date.now());
+
+    if (clickedPointIndex !== -1) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedPointIndex(clickedPointIndex);
+      console.log('Selected point:', clickedPointIndex);
+    } else {
+      // Clear selection if clicking elsewhere
+      setSelectedPointIndex(null);
+      setIsDragging(false);
+      setJustFinishedDragging(false);
+      console.log('Cleared selection');
     }
-  };
+  }, [drawingMode, points]);
 
-  const handleClearPoints = () => {
-    setPoints([]);
-    setSelectedPointIndex(null);
-    updateInstructions();
-  };
-
-  const handleClosePolygon = () => {
-    if (points.length > 2) {
-      // Calculate convex hull and close the polygon
-      const convexHull = calculateConvexHull(points);
-      setPoints(convexHull);
-      setDrawingMode(false);
-      updateInstructions();
+  const handleMouseUp = useCallback((event) => {
+    console.log('Mouse up - isDragging:', isDragging, 'selectedPointIndex:', selectedPointIndex);
+    setMouseDownTime(null);
+    
+    if (isDragging) {
+      event.preventDefault();
+      setIsDragging(false);
+      setJustFinishedDragging(true);
+      // Clear the flag after a short delay to allow the event to propagate
+      setTimeout(() => setJustFinishedDragging(false), 50);
     }
-  };
+  }, [isDragging, selectedPointIndex]);
+
+  const handleContextMenu = useCallback((event) => {
+    if (!drawingMode || !wrapperRef.current) return;
+    
+    event.preventDefault();
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+
+    // Check if right-click is on an existing point
+    const clickedPointIndex = points.findIndex(
+      p => Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2)) < 8
+    );
+
+    if (clickedPointIndex !== -1 && points.length > 1) {
+      console.log('Removing point at index via right-click:', clickedPointIndex, 'total points:', points.length);
+      console.log('Points before right-click deletion:', points);
+      setPoints(prevPoints => {
+        const newPoints = prevPoints.filter((_, index) => index !== clickedPointIndex);
+        console.log('Points after right-click deletion:', newPoints);
+        return newPoints;
+      });
+      setSelectedPointIndex(null);
+      setIsDragging(false);
+      setJustFinishedDragging(false);
+    } else {
+      console.log('Cannot delete point via right-click - clickedPointIndex:', clickedPointIndex, 'points.length:', points.length);
+    }
+  }, [drawingMode, points]);
+
+  const handleOverlayClick = useCallback((event) => {
+    if (!drawingMode || !wrapperRef.current) return;
+    
+    // Don't add points if we're dragging or just finished dragging
+    if (isDragging || justFinishedDragging) {
+      console.log('Skipping overlay click - isDragging:', isDragging, 'justFinishedDragging:', justFinishedDragging);
+      return;
+    }
+    
+    console.log('Overlay click');
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+
+    // Clamp coordinates
+    const clampedX = Math.max(0, Math.min(100, x));
+    const clampedY = Math.max(0, Math.min(100, y));
+
+    // Check if click is near an existing point
+    const clickedPointIndex = points.findIndex(
+      p => Math.sqrt(Math.pow(clampedX - p.x, 2) + Math.pow(clampedY - p.y, 2)) < 8
+    );
+
+    // Only add new point if not clicking on existing point
+    if (clickedPointIndex === -1) {
+      console.log('Adding new point via overlay:', { x: clampedX, y: clampedY });
+      setPoints(prevPoints => {
+        // Create new point with just x and y coordinates (let backend handle _id if needed)
+        const newPoint = { x: clampedX, y: clampedY };
+        const newPoints = [...prevPoints, newPoint];
+        console.log('Points after adding:', newPoints.length);
+        return newPoints;
+      });
+    }
+  }, [drawingMode, isDragging, justFinishedDragging, points]);
 
   // Form submission
   const handleSubmit = async () => {
@@ -236,12 +399,18 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
         countingDirection
       };
 
+      console.log('Submitting zone data:', zoneData);
+      console.log('Points being saved:', points);
+
       if (zone) {
+        console.log('Updating existing zone:', zone._id);
         await axios.patch(`http://localhost:5008/api/zones/${zone._id}`, zoneData);
       } else {
+        console.log('Creating new zone');
         await axios.post('http://localhost:5008/api/zones', zoneData);
       }
 
+      console.log('Zone saved successfully');
       onClose();
     } catch (error) {
       console.error('Lỗi khi lưu vùng:', error);
@@ -312,19 +481,41 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
 
         <Box mb={2}>
           <Paper elevation={3} sx={{ padding: 2, backgroundColor: drawingMode ? '#fffde7' : 'inherit' }}>
-            <Typography variant="subtitle1" gutterBottom>
-              {instructions}
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="subtitle1" gutterBottom>
+                {instructions}
+              </Typography>
+              <Box>
+                <Button 
+                  variant="outlined" 
+                  size="small"
+                  onClick={() => {
+                    setDrawingMode(!drawingMode);
+                    setSelectedPointIndex(null);
+                    setIsDragging(false);
+                    setJustFinishedDragging(false);
+                  }}
+                >
+                  {drawingMode ? 'Thoát vẽ' : 'Vào chế độ vẽ'}
+                </Button>
+              </Box>
+            </Box>
 
             {drawingMode && (
-              <Box display="flex" gap={2} mb={2}>
-                <Button variant="outlined" onClick={() => setDrawingMode(false)}>
+              <Box display="flex" gap={2} mb={2} flexWrap="wrap">
+                <Button variant="outlined" onClick={() => {
+                  setDrawingMode(false);
+                  setSelectedPointIndex(null);
+                  setIsDragging(false);
+                  setJustFinishedDragging(false);
+                }}>
                   Thoát chế độ vẽ (Esc)
                 </Button>
                 <Button
                   variant="outlined"
                   onClick={handleRemoveLastPoint}
                   disabled={points.length === 0}
+                  color="warning"
                 >
                   Xóa điểm cuối (r)
                 </Button>
@@ -332,6 +523,7 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
                   variant="outlined"
                   onClick={handleClearPoints}
                   disabled={points.length === 0}
+                  color="error"
                 >
                   Xóa tất cả
                 </Button>
@@ -339,9 +531,32 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
                   variant="contained"
                   onClick={handleClosePolygon}
                   disabled={points.length < 3}
+                  color="success"
                 >
                   Hoàn thành vùng (d)
                 </Button>
+                {selectedPointIndex !== null && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      if (points.length > 1) {
+                        console.log('Deleting selected point via button:', selectedPointIndex);
+                        setPoints(prevPoints => {
+                          const newPoints = prevPoints.filter((_, index) => index !== selectedPointIndex);
+                          console.log('Points after button deletion:', newPoints.length);
+                          return newPoints;
+                        });
+                        setSelectedPointIndex(null);
+                        setIsDragging(false);
+                        setJustFinishedDragging(false);
+                      }
+                    }}
+                    color="error"
+                    size="small"
+                  >
+                    Xóa điểm {selectedPointIndex + 1} (Del)
+                  </Button>
+                )}
               </Box>
             )}
 
@@ -352,11 +567,14 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
                 paddingTop: '56.25%',
                 border: '1px solid #ccc',
                 marginBottom: 2,
-                backgroundColor: 'black'
+                backgroundColor: 'black',
+                cursor: drawingMode ? (isDragging ? 'grabbing' : 'crosshair') : 'default'
               }}
               onMouseMove={handleMouseMove}
+              onMouseDown={handleMouseDown}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
+              onContextMenu={handleContextMenu}
             >
               <div style={{
                 position: 'absolute',
@@ -369,18 +587,37 @@ const ZoneEditor = ({ cameraId, zone, onClose, camera }) => {
                   camera={camera}
                   zones={displayZones}
                   showZones={true}
-                  onVideoClick={handleVideoClick}
+                  onVideoClick={null} // Disable video click handling
                   isDrawingMode={drawingMode}
                   editingPoints={drawingMode ? points : []}
                   selectedPointIndex={selectedPointIndex}
                 />
+                
+                {/* Mouse interaction overlay */}
+                {drawingMode && (
+                  <div 
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      zIndex: 10,
+                      cursor: isDragging ? 'grabbing' : 'crosshair'
+                    }}
+                    onClick={handleOverlayClick}
+                  />
+                )}
               </div>
             </Box>
 
             {drawingMode && (
               <Typography variant="body2">
                 Số điểm: {points.length} {points.length > 2 &&
-                  "(Nhấn 'd' để hoàn thành vùng)"}
+                  "(Nhấn 'd' để hoàn thành vùng)"}<br/>
+                <small style={{ color: '#666' }}>
+                  💡 Mẹo: Nhấn chuột trái để thêm điểm, kéo để di chuyển, chuột phải để xóa điểm
+                </small>
               </Typography>
             )}
           </Paper>

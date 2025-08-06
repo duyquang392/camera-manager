@@ -27,7 +27,6 @@ const VideoPlayer = ({
     setError(null);
     setStreamReady(false);
 
-    // Cleanup previous stream
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -42,7 +41,6 @@ const VideoPlayer = ({
             await initializeHLS(video, camera.hlsUrl);
             break;
           case 'rtsp':
-            // For RTSP, we might need to convert to HLS via backend
             await initializeRTSP(video, camera);
             break;
           case 'http':
@@ -110,7 +108,6 @@ const VideoPlayer = ({
       hls.loadSource(hlsUrl);
       hls.attachMedia(video);
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
       video.src = hlsUrl;
       video.addEventListener('loadedmetadata', () => {
         setStreamReady(true);
@@ -122,14 +119,10 @@ const VideoPlayer = ({
   };
 
   const initializeRTSP = async (video, camera) => {
-    // For RTSP streams, we need to check if there's a corresponding HLS conversion
-    // This would typically be handled by a media server like go2rtc or FFmpeg
     try {
-      // Try to get HLS stream from backend for this RTSP camera
       const hlsUrl = `http://localhost:8000/api/hls/output/${camera._id}/playlist.m3u8`;
       await initializeHLS(video, hlsUrl);
     } catch (err) {
-      // Fallback: suggest using a media server
       throw new Error('RTSP stream cần media server để chuyển đổi sang HLS. Vui lòng kiểm tra cấu hình go2rtc hoặc FFmpeg.');
     }
   };
@@ -149,12 +142,22 @@ const VideoPlayer = ({
   };
 
   const handleVideoClick = (event) => {
-    if (onVideoClick && isDrawingMode) {
-      const rect = videoRef.current.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * 100;
-      const y = ((event.clientY - rect.top) / rect.height) * 100;
-      onVideoClick({ x, y });
-    }
+    if (!onVideoClick) return;
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const rect = videoRef.current.getBoundingClientRect();
+    const scaleX = rect.width / 100;
+    const scaleY = rect.height / 100;
+    
+    const x = ((event.clientX - rect.left) / scaleX);
+    const y = ((event.clientY - rect.top) / scaleY);
+    
+    const clampedX = Math.max(0, Math.min(100, x));
+    const clampedY = Math.max(0, Math.min(100, y));
+    
+    onVideoClick({ x: clampedX, y: clampedY });
   };
 
   return (
@@ -198,7 +201,8 @@ const VideoPlayer = ({
           width: '100%',
           height: '100%',
           backgroundColor: 'black',
-          cursor: isDrawingMode ? 'crosshair' : 'default'
+          cursor: isDrawingMode ? 'crosshair' : 'default',
+          pointerEvents: isDrawingMode ? 'none' : 'auto'
         }}
         onClick={handleVideoClick}
       />
@@ -212,7 +216,7 @@ const VideoPlayer = ({
             left: 0,
             width: '100%',
             height: '100%',
-            pointerEvents: isDrawingMode ? 'none' : 'auto'
+            pointerEvents: 'none'
           }}
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
@@ -259,11 +263,28 @@ const VideoPlayer = ({
                   key={`editing-point-${index}`}
                   cx={point.x}
                   cy={point.y}
-                  r={selectedPointIndex === index ? "0.8" : "0.5"}
-                  fill={selectedPointIndex === index ? "yellow" : "red"}
+                  r={selectedPointIndex === index ? "1.2" : "0.8"}
+                  fill={selectedPointIndex === index ? "orange" : "red"}
                   stroke="white"
-                  strokeWidth="0.1"
+                  strokeWidth="0.2"
+                  style={{ cursor: 'pointer' }}
                 />
+              ))}
+              
+              {/* Point labels */}
+              {editingPoints.map((point, index) => (
+                <text
+                  key={`point-label-${index}`}
+                  x={point.x + 1.5}
+                  y={point.y - 1.5}
+                  fill="white"
+                  stroke="black"
+                  strokeWidth="0.1"
+                  fontSize="1.5"
+                  fontFamily="Arial, sans-serif"
+                >
+                  {index + 1}
+                </text>
               ))}
             </g>
           )}
@@ -286,7 +307,7 @@ const VideoPlayer = ({
           }}
         >
           <Typography variant="body2">
-            🎯 Chế độ vẽ: Nhấn chuột trái để thêm điểm, kéo để di chuyển điểm, nhấn 'd' để hoàn thành vùng
+            🎯 Chế độ vẽ: Nhấn chuột trái để thêm điểm, kéo để di chuyển điểm, chuột phải để xóa điểm, nhấn 'd' để hoàn thành vùng
           </Typography>
         </Box>
       )}
